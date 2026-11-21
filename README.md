@@ -16,8 +16,11 @@
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/pipeline_router.py  跨模块采集流水线接口
+│   ├── app/routers/handover_router.py  交接班补做接口（领取/补做/移交/核对）
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
 │   ├── app/services/base.py     共享服务骨架
+│   ├── app/services/shift_handover.py  重试队列交接班补做编排
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
 └── docker-compose.yml
@@ -78,6 +81,21 @@ npm run dev
   `frontend/src/domain/<模块>.ts`，用于承载真实业务差异并维持36题位容量。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 交接班补做
+
+重试队列按来源交接限制补做权限，由 `/api/handover/*` 提供入口：
+
+- `POST /api/handover/claim`：班组按来源领取待重试记录，签发带行范围和
+  可核验摘要的领取凭证；交接并发允许新旧班组各持一份，响应提示重叠凭证。
+- `POST /api/handover/redo`：补做入口。按来源核对归属并校验凭证行范围，
+  生成归属核验后的补做范围；只有范围内的原始日志会被读取正文交给解析。
+  同一记录只确认一份有效补做结果，冲突双方的归属凭证都回写交接清单。
+- `POST /api/handover/transfer`：跨班移交。验证权限和行范围，超出凭证的
+  记录留在本来所在的批次，其他来源的待重试行继续照原处置。
+- `GET /api/handover/manifest`：交接清单。交班后关联实际整理过的原始
+  日志，核对哪一班、哪张领取凭证生成了哪些标准化明细。
+- `GET /api/handover/credentials`：领取凭证查询，交班后仍可凭摘要核验归属。
 
 领域：数据工程
 子方向：数据采集、爬虫与RPA
